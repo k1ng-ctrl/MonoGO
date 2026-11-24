@@ -8,39 +8,23 @@ const crypto=require('node:crypto');
 const rules=require('./src/leagues').getLeague('master-mega');
 const pokemon=gamemaster.pokemon.filter(rules.eligible).map(rules.normalize).sort((a,b)=>a.speciesName.localeCompare(b.speciesName));
 const candidates=new Map(pokemon.map(p=>[p.speciesId,rules.configs(p)]));
-const revision=crypto.createHash('sha256').update(execFileSync('git',['-C',upstream,'rev-parse','HEAD'])).update(fs.readFileSync(path.join(upstream,'src/data/gamemaster.json'))).update(fs.readFileSync(path.join(root,'public/simulator.js'))).update(fs.readFileSync(path.join(root,'src/leagues/master-mega.js'))).digest('hex');
+const revision=crypto.createHash('sha256').update(execFileSync('git',['-C',upstream,'rev-parse','HEAD'])).update(fs.readFileSync(path.join(upstream,'src/data/gamemaster.json'))).update(fs.readFileSync(path.join(root,'public/simulator.js'))).update(fs.readFileSync(path.join(root,'src/leagues/master-mega.js'))).update(fs.readFileSync(path.join(root,'src/pokeGOD/headless.js'))).update(fs.readFileSync(path.join(root,'src/pokeGOD/compile-worker.js'))).digest('hex');
 const catalog={revision,league:rules.id,ruleVersion:rules.version,multipliers,pokemon,moves:Object.fromEntries(gamemaster.moves.map(m=>[m.moveId,m.name])),coverage:{total:gamemaster.pokemon.length,released:pokemon.length,excluded:gamemaster.pokemon.filter(p=>!rules.eligible(p)).map(p=>({speciesId:p.speciesId,reason:'not marked released in GameMaster'})),movesets:[...candidates.values()].reduce((n,x)=>n+x.length,0)},counts:Object.fromEntries([...candidates].map(([id,x])=>[id,x.length]))};
+const compiler=require('./src/pokeGOD/compiler').createCompiler({root,catalog,candidates});
 const port=Number(process.env.PORT||3000);
 const mime={'.html':'text/html','.js':'application/javascript','.json':'application/json','.css':'text/css'};
 http.createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
  if(url.pathname==='/api/team'&&req.method==='GET'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({league,pokemons,team}));}
  if(url.pathname==='/api/catalog'&&req.method==='GET'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(catalog));}
- if(url.pathname==='/api/compile'&&['GET','POST'].includes(req.method)){
-  res.setHeader('Content-Type','application/json');
-  const key=url.searchParams.get('key'),species=url.searchParams.get('species');
+ if(url.pathname==='/api/compile'&&['GET','POST','DELETE'].includes(req.method)){
+  res.setHeader('Content-Type','application/json');const key=url.searchParams.get('key'),species=url.searchParams.get('species');
+  if(req.method!=='GET'&&! [`http://localhost:${port}`,`http://127.0.0.1:${port}`].includes(req.headers.origin)){res.writeHead(403);return res.end('Forbidden');}
+  if(req.method==='POST'){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>1024*1024){res.writeHead(413);return res.end('Too large');}chunks.push(chunk);}return res.end(JSON.stringify(compiler.start(JSON.parse(Buffer.concat(chunks)).team)));}
   if(!/^[a-f0-9]{64}$/.test(key||'')||(species!==null&&!candidates.has(species))){res.writeHead(400);return res.end('Invalid key or species');}
-  const dir=path.join(root,'data','teams',key),manifest=path.join(dir,'manifest.json');
-  if(req.method==='GET'){
-   if(species){try{return res.end(await fs.promises.readFile(path.join(dir,species+'.json')));}catch(e){if(e.code==='ENOENT')return res.end('null');throw e;}}
-   let saved=[];try{saved=(await fs.promises.readdir(dir)).filter(n=>n.endsWith('.json')&&candidates.has(n.slice(0,-5))).map(n=>n.slice(0,-5));}catch(e){if(e.code!=='ENOENT')throw e;}
-   return res.end(JSON.stringify({saved}));
-  }
-  if(![`http://localhost:${port}`,`http://127.0.0.1:${port}`].includes(req.headers.origin)){res.writeHead(403);return res.end('Forbidden');}
-  let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>100*1024*1024){res.writeHead(413);return res.end('Too large');}chunks.push(chunk);}
-  const data=JSON.parse(Buffer.concat(chunks));
-  if(data.revision!==revision||data.key!==key){res.writeHead(400);return res.end('Revision mismatch');}
-  if(!Array.isArray(data.team)||data.team.length!==3){res.writeHead(400);return res.end('Invalid team');}
-  const expectedKey=crypto.createHash('sha256').update(JSON.stringify({version:2,revision,league:rules.id,team:data.team})).digest('hex');
-  if(expectedKey!==key){res.writeHead(400);return res.end('Team key mismatch');}
-  if(species){
-   const expected=candidates.get(species);
-   if(data.speciesId!==species||!Array.isArray(data.entries)||data.entries.length!==expected.length||!data.entries.every((entry,i)=>JSON.stringify(entry.moves)===JSON.stringify(expected[i])&&(entry.error||data.team.every(p=>Object.keys(entry.results?.[p.speciesId]||{}).length===9)))){res.writeHead(400);return res.end('Invalid shard');}
-  }else{
-   const saved=await fs.promises.readdir(dir);
-   if(!pokemon.every(p=>saved.includes(p.speciesId+'.json'))){res.writeHead(400);return res.end('Missing shards');}
-  }
-  fs.mkdirSync(dir,{recursive:true});const target=species?path.join(dir,species+'.json'):manifest,tmp=target+'.'+crypto.randomUUID()+'.tmp';fs.writeFileSync(tmp,JSON.stringify(data));fs.renameSync(tmp,target);return res.end('{"saved":true}');
+  if(req.method==='DELETE')return res.end(JSON.stringify(await compiler.cancel(key)));
+  if(species){try{return res.end(await fs.promises.readFile(path.join(compiler.directory(key),species+'.json')));}catch(e){if(e.code==='ENOENT')return res.end('null');throw e;}}
+  return res.end(JSON.stringify(compiler.status(key)));
  }
  if(url.pathname==='/api/movesets'&&req.method==='GET'){
   const species=url.searchParams.get('species');if(!candidates.has(species)){res.writeHead(404);return res.end('Unknown species');}

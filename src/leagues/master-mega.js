@@ -1,6 +1,6 @@
 'use strict';
 // Selection policy, not an assertion of independently verified live legality.
-const id='master-mega',version=1,cp=10000,cup='mega';
+const id='master-mega',version=2,cp=10000,cup='mega';
 const unique=xs=>[...new Set(xs)].sort();
 function eligible(p){return p.released===true;}
 function normalize(p){
@@ -17,6 +17,7 @@ function configs(p){
   for(let i=0;i<p.chargedMoves.length;i++){
    const a=p.chargedMoves[i];
    result.push({fast,charged:[a]});
+   if(p.thirdMoveCost===false)continue; // Cannot unlock a second charged move (Smeargle).
    // Keep both orders: upstream tie-breaking may depend on ordering.
    for(let j=0;j<p.chargedMoves.length;j++){
     if(i===j)continue;

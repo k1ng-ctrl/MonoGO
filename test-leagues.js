@@ -8,3 +8,5 @@ const mega=rules.normalize({...p,tags:['mega','supermega'],extraChargedMoves:['X
 assert.equal(mega.opponentLevel,52);assert.equal(mega.megaLevel,4);assert.equal(rules.configs(mega).length,6);
 assert.ok(rules.normalize({...p,tags:['shadow']}).chargedMoves.includes('FRUSTRATION'));
 console.log('League enumeration tests passed');
+
+assert.equal(rules.configs(rules.normalize({...p,thirdMoveCost:false})).length,2);
