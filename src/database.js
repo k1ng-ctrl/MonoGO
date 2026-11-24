@@ -1,0 +1,11 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.join(__dirname,'pvpoke','src');
+const gamemaster=require(path.join(root,'data/gamemaster.json'));
+const source=fs.readFileSync(path.join(root,'js/pokemon/Pokemon.js'),'utf8');
+const match=source.match(/var\s+cpms\s*=\s*(\[[\s\S]*?\])/);
+if(!match)throw Error('CP multipliers not found');
+const multipliers=JSON.parse(match[1]).map((cpm,i)=>({cpm,level:1+i/2}));
+const getPokemon=name=>gamemaster.pokemon.find(p=>[p.speciesName,p.speciesId].some(v=>v.toLowerCase()===name.toLowerCase()));
+const getMove=name=>gamemaster.moves.find(p=>[p.name,p.moveId].some(v=>v?.toLowerCase()===name.toLowerCase()));
+module.exports={gamemaster,multipliers,getPokemon,getMove};

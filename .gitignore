@@ -1,0 +1,5 @@
+node_modules/
+src/pvpoke/
+data/
+.env
+*.log
