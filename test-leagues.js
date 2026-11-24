@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('node:assert/strict');
+const rules=require('./src/leagues').getLeague('master-mega');
+const p={speciesId:'test',released:true,fastMoves:['F','F'],chargedMoves:['A','B','A'],tags:[]};
+assert.equal(rules.eligible(p),true);assert.equal(rules.eligible({...p,released:false}),false);
+assert.deepEqual(rules.configs(rules.normalize(p)),[{fast:'F',charged:['A']},{fast:'F',charged:['A','B']},{fast:'F',charged:['B']},{fast:'F',charged:['B','A']}]);
+const mega=rules.normalize({...p,tags:['mega','supermega'],extraChargedMoves:['X']});
+assert.equal(mega.opponentLevel,52);assert.equal(mega.megaLevel,4);assert.equal(rules.configs(mega).length,6);
+assert.ok(rules.normalize({...p,tags:['shadow']}).chargedMoves.includes('FRUSTRATION'));
+console.log('League enumeration tests passed');

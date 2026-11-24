@@ -10,7 +10,14 @@ const MonoGo = (() => {
         p.setIV('hp', config.iv.stamina);
         p.setLevel(config.level);
         p.selectMove('fast', config.moves.fast, 0, true);
-        config.moves.charged.forEach((move, i) => p.selectMove('charged', move, i, true));
+        // Set exact slots from the simulator's initialized pools; selectMove may
+        // silently replace duplicate defaults or leave unused slots equipped.
+        p.chargedMoves = config.moves.charged.map((id,i)=>{
+            const move=(i===2?p.extraChargedMovePool:p.chargedMovePool).find(m=>m.moveId===id);
+            if(!move)throw Error('Unsupported charged move: '+id);
+            return move;
+        });
+        p.resetMoves();
         if (p.fastMove?.moveId !== config.moves.fast || config.moves.charged.some((m,i)=>p.chargedMoves[i]?.moveId !== m)) throw Error('Moveset mismatch: '+config.speciesId);
         if (config.cp != null && p.cp !== config.cp) throw Error(`${config.speciesId}: CP mismatch ${p.cp} != ${config.cp}`);
         p.setShields(shields);
